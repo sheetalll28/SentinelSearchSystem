@@ -1,0 +1,2 @@
+{"ts": 1785677386.6669009, "event_type": "prompt_injection_detected", "details": {"source": "test-source", "matched_phrases": ["Ignore all previous instructions"]}}
+{"ts": 1785677438.6574242, "event_type": "prompt_injection_detected", "details": {"source": "test-source", "matched_phrases": ["Ignore all previous instructions"]}}

@@ -1,0 +1,6 @@
+query,factual_accuracy,completeness,readability,notes
+What is retrieval-augmented generation and why does it reduce hallucination?,,,,
+What are the main differences between supervised fine-tuning and RAG?,,,,
+What is the ReAct pattern for AI agents?,,,,
+What are common risks of prompt injection in AI agent systems?,,,,
+How does vector similarity search work in embedding-based retrieval?,,,,

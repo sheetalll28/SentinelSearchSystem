@@ -1,0 +1,6 @@
+Retrieval-Augmented Generation (RAG) combines a retriever component with a generative
+language model. Instead of relying solely on parameters learned during training, the
+system retrieves relevant chunks of text from an external knowledge base at inference
+time and conditions the generation on that retrieved context. This reduces hallucination
+and allows the system to cite sources, since the model's output can be grounded in
+specific retrieved passages rather than purely memorized knowledge.

@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentinel-Search</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ivory: #FBF7F1;
+    --ivory-2: #F4EDE2;
+    --sidebar: #F0E8D9;
+    --ink: #211C17;
+    --ink-soft: #5C5348;
+    --ink-faint: #948A7C;
+    --line: #E3D8C4;
+    --amber: #D9803D;
+    --amber-deep: #B8632A;
+
+    --c-lead: #A8542E;
+    --c-scout: #5C7A5C;
+    --c-fact: #C08A2E;
+    --c-editor: #7A5C7A;
+
+    --serif: 'Fraunces', serif;
+    --sans: 'Inter', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--ivory);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ===================== ANIMATED BACKGROUND ===================== */
+  .bg-field {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      #F2872E 0%,
+      #EE7C4A 16%,
+      #E08672 34%,
+      #C299B0 52%,
+      #A8AEDD 68%,
+      #DCE1F5 84%,
+      var(--ivory) 100%
+    );
+  }
+
+  .bg-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: 0.28;
+    mix-blend-mode: soft-light;
+    animation: drift 26s ease-in-out infinite;
+  }
+
+  .bg-blob.b1 { width: 540px; height: 540px; background: radial-gradient(circle, #FFFFFF, transparent 70%); top: -120px; left: -80px; animation-duration: 24s; opacity: 0.35; }
+  .bg-blob.b2 { width: 460px; height: 460px; background: radial-gradient(circle, #6E1F2B, transparent 70%); bottom: -100px; right: -60px; animation-duration: 30s; animation-delay: -8s; opacity: 0.2; mix-blend-mode: multiply; }
+  .bg-blob.b3 { width: 380px; height: 380px; background: radial-gradient(circle, #FFFFFF, transparent 70%); top: 30%; right: 10%; animation-duration: 34s; animation-delay: -14s; opacity: 0.25; }
+  .bg-blob.b4 { width: 320px; height: 320px; background: radial-gradient(circle, #4A3F7A, transparent 70%); bottom: 10%; left: 20%; animation-duration: 28s; animation-delay: -4s; opacity: 0.14; mix-blend-mode: multiply; }
+  .bg-blob.b5 { width: 300px; height: 300px; background: radial-gradient(circle, #FFFFFF, transparent 70%); top: 8%; left: 42%; animation-duration: 32s; animation-delay: -18s; opacity: 0.3; }
+
+  @keyframes drift {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(40px, 30px) scale(1.08); }
+    66% { transform: translate(-30px, 20px) scale(0.95); }
+  }
+
+  .bg-grain {
+    position: absolute;
+    inset: 0;
+    opacity: 0.02;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  @media (prefers-reduced-motion: reduce) { .bg-blob { animation: none !important; } }
+
+  /* ===================== APP SHELL ===================== */
+  .app {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: var(--sidebar-width, 264px) 1fr;
+    height: 100vh;
+  }
+
+  .sidebar {
+    position: relative;
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(255,255,255,0.4);
+    box-shadow: 4px 0 30px -12px rgba(78,40,30,0.15);
+    display: flex;
+    flex-direction: column;
+    padding: 20px 16px;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(110,31,43,0.35) transparent;
+  }
+
+  .sidebar::-webkit-scrollbar { width: 7px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb {
+    background: rgba(110,31,43,0.3);
+    border-radius: 100px;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+  .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(110,31,43,0.5); background-clip: padding-box; }
+
+  .sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: ew-resize;
+    z-index: 10;
+    background: transparent;
+  }
+
+  .sidebar-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0; left: 2px;
+    width: 2px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background 0.15s ease;
+  }
+
+  .sidebar-resize-handle:hover::after,
+  .sidebar-resize-handle.dragging::after {
+    background: #6E1F2B;
+    opacity: 0.5;
+  }
+
+  body.resizing-sidebar { cursor: ew-resize; user-select: none; }
+
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); flex-shrink: 0; }
+
+  /* --- Logo --- */
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 6px 22px;
+  }
+
+  .logo-mark { width: 30px; height: 30px; flex-shrink: 0; }
+
+  .brand-text {
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    line-height: 1;
+  }
+
+  .brand-text small {
+    display: block;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--ink-faint);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    line-height: 1;
+  }
+
+  /* --- Agent nav --- */
+  .sidebar-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 4px 8px 10px;
+  }
+
+  .doc-source { margin-bottom: 18px; }
+
+  .doc-source-current {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: rgba(255,255,255,0.6);
+    border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 10px;
+    padding: 9px 12px;
+    margin-bottom: 8px;
+  }
+
+  .doc-source-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .doc-source-tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6E1F2B;
+    background: rgba(110,31,43,0.1);
+    padding: 3px 8px;
+    border-radius: 100px;
+    flex-shrink: 0;
+  }
+
+  .doc-upload-btn {
+    display: block;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    background: rgba(255,255,255,0.4);
+    border: 1px dashed rgba(110,31,43,0.35);
+    border-radius: 10px;
+    padding: 9px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .doc-upload-btn:hover { border-color: #6E1F2B; color: #6E1F2B; background: rgba(110,31,43,0.06); }
+  .doc-upload-btn.uploading { opacity: 0.6; cursor: wait; }
+
+  .doc-reset-btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-faint);
+    background: transparent;
+    border: none;
+    padding: 6px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .doc-reset-btn:hover { color: #6E1F2B; text-decoration: underline; }
+
+  .agent-nav { display: flex; flex-direction: column; gap: 4px; margin-bottom: 20px; }
+
+  .agent-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .agent-nav-item:hover { background: rgba(255,255,255,0.6); }
+  .agent-nav-item.selected { background: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.7); box-shadow: 0 4px 14px -6px rgba(78,40,30,0.18); }
+
+  .agent-nav-icon {
+    width: 24px; height: 24px; border-radius: 8px;
+    background: var(--item-color);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-family: var(--mono); font-size: 11px; font-weight: 700;
+    flex-shrink: 0; opacity: 0.9;
+  }
+
+  .agent-nav-text { flex: 1; min-width: 0; }
+  .agent-nav-name { font-size: 13px; font-weight: 600; }
+  .agent-nav-status { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); }
+
+  .agent-nav-icon.state-running { box-shadow: 0 0 0 3px color-mix(in srgb, var(--item-color) 35%, transparent); animation: icon-pulse 1.3s ease-in-out infinite; }
+  .agent-nav-icon.state-done { opacity: 1; box-shadow: 0 0 0 2px color-mix(in srgb, var(--item-color) 20%, transparent); }
+  @keyframes icon-pulse { 50% { opacity: 0.6; } }
+
+  .run-history {
+    flex: 1;
+    min-height: 60px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(110,31,43,0.3) transparent;
+  }
+
+  .run-history::-webkit-scrollbar { width: 6px; }
+  .run-history::-webkit-scrollbar-track { background: transparent; }
+  .run-history::-webkit-scrollbar-thumb { background: rgba(110,31,43,0.28); border-radius: 100px; }
+
+  .history-empty {
+    padding: 10px 8px;
+    font-size: 12px;
+    color: var(--ink-faint);
+    line-height: 1.5;
+  }
+
+  .history-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 9px 10px;
+    border-radius: 9px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .history-item:hover { background: rgba(255,255,255,0.5); }
+  .history-item.active { background: #fff; border-color: var(--line); }
+
+  .history-item-title {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .history-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .history-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-faint); flex-shrink: 0; }
+  .history-dot.live { background: var(--amber); animation: dot-pulse 1.1s ease-in-out infinite; }
+  .history-dot.done { background: #6B8F6B; }
+  @keyframes dot-pulse { 50% { opacity: 0.3; } }
+
+  .health-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-bottom: 8px;
+  }
+
+  .health-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); flex-shrink: 0; }
+  .health-chip.ok .dot { background: #6B8F6B; }
+  .health-chip.error .dot { background: #B8632A; }
+
+  /* --- Settings / API key panel trigger --- */
+  .settings-btn {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,0.5);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    transition: border-color 0.15s ease;
+  }
+
+  .settings-btn:hover { border-color: var(--amber); color: var(--amber-deep); }
+  .settings-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+  .settings-btn.connected .dot { background: #6B8F6B; }
+
+  /* ===================== SETTINGS MODAL ===================== */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(33,28,23,0.35);
+    backdrop-filter: blur(3px);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .modal-backdrop.active { display: flex; }
+
+  .modal {
+    background: #fff;
+    border-radius: 18px;
+    border: 1px solid var(--line);
+    padding: 30px 32px;
+    width: 420px;
+    max-width: 90vw;
+  }
+
+  .modal h3 { font-family: var(--serif); font-size: 19px; font-weight: 600; margin-bottom: 6px; }
+  .modal p.desc { font-size: 13px; color: var(--ink-soft); margin-bottom: 22px; line-height: 1.5; }
+
+  .field-label { font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; }
+
+  .provider-options { display: flex; gap: 8px; margin-bottom: 18px; }
+  .provider-opt {
+    flex: 1;
+    text-align: center;
+    padding: 10px 8px;
+    border-radius: 10px;
+    border: 1.5px solid var(--line);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--ink-soft);
+    transition: all 0.15s ease;
+  }
+  .provider-opt.active { border-color: var(--amber); color: var(--amber-deep); background: var(--ivory-2); }
+
+  .modal input[type="text"], .modal input[type="password"] {
+    width: 100%;
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 14px;
+    font-family: var(--sans);
+    outline: none;
+    margin-bottom: 18px;
+    transition: border-color 0.15s ease;
+  }
+  .modal input:focus { border-color: var(--amber); }
+
+  .modal-note {
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    line-height: 1.5;
+    margin-bottom: 22px;
+  }
+
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+  .btn-primary {
+    background: var(--ink); color: var(--ivory); border: none;
+    padding: 10px 20px; border-radius: 10px; font-weight: 600; font-size: 13.5px; cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .btn-primary:hover { background: var(--amber-deep); }
+
+  .btn-secondary {
+    background: transparent; border: 1px solid var(--line); color: var(--ink-soft);
+    padding: 10px 18px; border-radius: 10px; font-weight: 500; font-size: 13.5px; cursor: pointer;
+  }
+
+  /* ===================== WORKSPACE ===================== */
+  .workspace { overflow-y: auto; height: 100vh; }
+  .workspace-inner { max-width: 780px; margin: 0 auto; padding: 40px 32px 100px; }
+
+  /* --- persistent search bar --- */
+  .search-bar-wrap { margin-bottom: 8px; }
+
+  .search-bar {
+    display: flex;
+    gap: 10px;
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(8px);
+    border: 1.5px solid var(--line);
+    border-radius: 14px;
+    padding: 6px;
+  }
+
+  #topic-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 11px 12px;
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--ink);
+    outline: none;
+  }
+
+  #topic-input::placeholder { color: var(--ink-faint); }
+
+  #submit-btn {
+    background: var(--ink);
+    color: var(--ivory);
+    border: none;
+    border-radius: 10px;
+    padding: 11px 22px;
+    font-weight: 600;
+    font-size: 13.5px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  #submit-btn:hover:not(:disabled) { background: var(--amber-deep); transform: translateY(-1px); }
+  #submit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .provider-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--ink-faint); margin: 10px 2px 0;
+  }
+  .provider-chip .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-faint); }
+  .provider-chip.connected .dot { background: #6B8F6B; }
+
+  /* --- landing (idle) stage --- */
+  .landing-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 80px);
+    text-align: center;
+    padding-top: 4vh;
+  }
+
+  .landing-stage.hidden { display: none; }
+
+  .landing-headline {
+    font-family: var(--serif);
+    font-size: clamp(40px, 6vw, 66px);
+    font-weight: 500;
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    margin-bottom: 20px;
+  }
+
+  .landing-headline em { font-style: italic; color: #6E1F2B; font-weight: 500; }
+
+  .landing-line {
+    font-size: 16.5px;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+    max-width: 46ch;
+  }
+
+  .landing-line.sub { margin-bottom: 38px; color: rgba(33,28,23,0.62); }
+
+  .landing-stage .search-bar-wrap { width: 100%; max-width: 560px; margin: 0 auto; }
+  .landing-stage .search-bar { background: rgba(255,255,255,0.85); backdrop-filter: blur(10px); box-shadow: 0 12px 36px -14px rgba(33,28,23,0.3); }
+
+  .docked-search-slot:empty { display: none; }
+  .docked-search-slot .search-bar-wrap { margin-bottom: 8px; }
+
+  /* --- run header --- */
+  .run-header { display: none; margin: 28px 0 24px; }
+  .run-header.active { display: block; }
+  .run-header-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .run-header h2 { font-family: var(--serif); font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+  .run-header-status {
+    font-family: var(--sans); font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+    color: #6E1F2B; white-space: nowrap;
+    background: rgba(255,255,255,0.7); backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.6);
+    padding: 5px 13px; border-radius: 100px;
+  }
+
+  .steps { display: flex; gap: 6px; margin-top: 16px; }
+  .step-track { flex: 1; height: 3px; border-radius: 100px; background: var(--line); overflow: hidden; position: relative; }
+  .step-track.running::after {
+    content: ''; position: absolute; inset: 0; background: var(--step-color);
+    animation: track-fill 1.6s ease-in-out infinite;
+  }
+  @keyframes track-fill {
+    0% { transform: scaleX(0); transform-origin: left; }
+    50% { transform: scaleX(1); }
+    100% { transform: scaleX(0); transform-origin: right; }
+  }
+  .step-track.done { background: var(--step-color); }
+
+  .usage-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    flex-wrap: wrap;
+  }
+
+  .usage-sep { opacity: 0.5; }
+  #usage-cost { color: #6E1F2B; font-weight: 600; }
+
+  .security-pill {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--amber-deep);
+    background: rgba(217,128,61,0.12);
+    border: 1px solid rgba(217,128,61,0.35);
+    padding: 4px 11px;
+    border-radius: 100px;
+    margin-top: 10px;
+    cursor: help;
+  }
+  .security-pill.active { display: inline-flex; }
+
+  /* --- stage cards --- */
+  .stages { display: none; }
+  .stages.active { display: block; }
+
+  .stage-card {
+    background: rgba(255,255,255,0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.6);
+    border-left: 3px solid var(--card-color);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+    opacity: 0.45;
+    transition: opacity 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+    scroll-margin-top: 20px;
+  }
+  .stage-card.pending { opacity: 0.4; }
+  .stage-card.running, .stage-card.done { opacity: 1; background: rgba(255,255,255,0.85); box-shadow: 0 8px 26px -14px rgba(78,40,30,0.25); }
+  .stage-card.highlighted { box-shadow: 0 0 0 3px color-mix(in srgb, var(--card-color) 30%, transparent); }
+
+  .stage-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .stage-icon {
+    width: 22px; height: 22px; border-radius: 7px; background: var(--card-color);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 11px; font-weight: 700; font-family: var(--mono); flex-shrink: 0; opacity: 0.85;
+  }
+  .stage-title { font-weight: 600; font-size: 14.5px; }
+  .stage-tag { font-size: 12.5px; color: var(--ink-faint); }
+  .stage-live-state { margin-left: auto; font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); }
+  .stage-card.running .stage-live-state { color: var(--card-color); }
+
+  .stage-output {
+    font-size: 13.5px; color: var(--ink-soft); line-height: 1.6; white-space: pre-wrap;
+    display: none; padding-top: 8px; border-top: 1px solid var(--ivory-2); margin-top: 8px;
+    max-height: 260px; overflow-y: auto;
+  }
+  .stage-card.done .stage-output, .stage-card.running .stage-output { display: block; }
+
+  /* --- report --- */
+  .report-wrap { display: none; margin-top: 8px; }
+  .report-wrap.active { display: block; animation: rise 0.4s ease; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .report-card {
+    background: rgba(255,255,255,0.82);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.65);
+    border-radius: 22px;
+    padding: 40px 44px;
+    box-shadow: 0 24px 60px -24px rgba(78,40,30,0.28);
+  }
+  @media (max-width: 600px) { .report-card { padding: 26px 22px; } }
+
+  .report-eyebrow {
+    display: inline-block;
+    font-family: var(--sans); font-weight: 600; font-size: 12.5px; letter-spacing: 0.03em; text-transform: uppercase;
+    color: #6E1F2B;
+    background: rgba(110,31,43,0.08);
+    padding: 5px 14px; border-radius: 100px;
+    margin-bottom: 18px;
+  }
+
+  .moderation-block {
+    background: rgba(184, 99, 42, 0.08);
+    border: 1px solid rgba(184, 99, 42, 0.3);
+    border-radius: 14px;
+    padding: 20px 22px;
+    color: var(--ink-soft);
+  }
+  .moderation-block strong { color: #B8632A; display: block; margin-bottom: 6px; font-size: 15px; }
+  .moderation-block p { font-size: 14px; line-height: 1.6; margin: 0; }
+
+  .report-body h1, .report-body h2, .report-body h3 { font-family: var(--serif); margin-top: 24px; margin-bottom: 10px; line-height: 1.3; }
+  .report-body h1 { font-size: 27px; font-weight: 600; }
+  .report-body h2 { font-size: 20px; color: #6E1F2B; }
+  .report-body h3 { font-size: 15.5px; color: var(--ink-soft); }
+  .report-body p { margin-bottom: 12px; line-height: 1.75; font-size: 15px; }
+  .report-body ul, .report-body ol { margin: 0 0 12px 22px; line-height: 1.75; }
+  .report-body li { margin-bottom: 5px; }
+  .report-body strong { color: var(--ink); font-weight: 700; }
+  .report-body a { color: #6E1F2B; }
+  .report-body blockquote { border-left: 3px solid #6E1F2B; padding-left: 15px; color: var(--ink-soft); margin: 13px 0; font-style: italic; }
+
+  .report-actions { display: flex; gap: 10px; margin-top: 26px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.08); }
+  .ghost-btn {
+    background: rgba(255,255,255,0.5); border: 1px solid rgba(0,0,0,0.1); color: var(--ink-soft);
+    font-weight: 500; font-size: 13px; padding: 9px 16px; border-radius: 100px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .ghost-btn:hover { border-color: #6E1F2B; color: #6E1F2B; background: rgba(110,31,43,0.06); }
+
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-field">
+  <div class="bg-blob b1"></div>
+  <div class="bg-blob b2"></div>
+  <div class="bg-blob b3"></div>
+  <div class="bg-blob b4"></div>
+  <div class="bg-blob b5"></div>
+  <div class="bg-grain"></div>
+</div>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <svg class="logo-mark" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="100" cy="158" rx="72" ry="16" fill="#6E1F2B"/>
+        <ellipse cx="103" cy="122" rx="52" ry="13" fill="#6E1F2B" transform="rotate(-3 103 122)"/>
+        <ellipse cx="98" cy="90" rx="34" ry="10.5" fill="#6E1F2B" transform="rotate(4 98 90)"/>
+        <ellipse cx="104" cy="62" rx="14" ry="20" fill="#6E1F2B" transform="rotate(18 104 62)"/>
+      </svg>
+      <div class="brand-text">
+        Sentinel·Search
+        <small>MULTI-AGENT PIPELINE</small>
+      </div>
+    </div>
+
+    <div class="sidebar-label">Reference document</div>
+    <div class="doc-source" id="doc-source">
+      <div class="doc-source-current" id="doc-source-current">
+        <span class="doc-source-name">Shared knowledge base</span>
+        <span class="doc-source-tag" id="doc-source-tag">default</span>
+      </div>
+      <label class="doc-upload-btn" for="pdf-upload-input">
+        <span id="doc-upload-label">Upload a PDF for this topic</span>
+      </label>
+      <input type="file" id="pdf-upload-input" accept="application/pdf" hidden>
+      <button class="doc-reset-btn" id="doc-reset-btn" style="display:none;">Use shared knowledge base instead</button>
+    </div>
+
+    <div class="sidebar-label">Agents</div>
+    <div class="agent-nav" id="agent-nav">
+      <div class="agent-nav-item" data-agent="Lead Researcher" style="--item-color: var(--c-lead);">
+        <div class="agent-nav-icon">01</div>
+        <div class="agent-nav-text">
+          <div class="agent-nav-name">Lead Researcher</div>
+          <div class="agent-nav-status">plans sub-questions</div>
+        </div>
+      </div>
+      <div class="agent-nav-item" data-agent="Web Scout" style="--item-color: var(--c-scout);">
+        <div class="agent-nav-icon">02</div>
+        <div class="agent-nav-text">
+          <div class="agent-nav-name">Web Scout</div>
+          <div class="agent-nav-status">searches the web</div>
+        </div>
+      </div>
+      <div class="agent-nav-item" data-agent="Fact Checker" style="--item-color: var(--c-fact);">
+        <div class="agent-nav-icon">03</div>
+        <div class="agent-nav-text">
+          <div class="agent-nav-name">Fact Checker</div>
+          <div class="agent-nav-status">checks the document</div>
+        </div>
+      </div>
+      <div class="agent-nav-item" data-agent="Editor" style="--item-color: var(--c-editor);">
+        <div class="agent-nav-icon">04</div>
+        <div class="agent-nav-text">
+          <div class="agent-nav-name">Editor</div>
+          <div class="agent-nav-status">writes the report</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-label" style="margin-top: 4px;">Recent runs</div>
+    <div class="run-history" id="run-history">
+      <div class="history-empty">Nothing yet — run a topic above and it'll show up here for quick recall.</div>
+    </div>
+
+    <div class="health-chip" id="health-chip">
+      <span class="dot"></span>
+      <span id="health-label">Checking backend…</span>
+    </div>
+
+    <div class="settings-btn" id="settings-btn">
+      <span class="dot" id="settings-dot"></span>
+      <span id="settings-label">Local · Ollama</span>
+    </div>
+    <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
+  </aside>
+
+
+  <main class="workspace">
+    <div class="workspace-inner" id="workspace-inner">
+
+      <div class="landing-stage" id="landing-stage">
+        <h1 class="landing-headline">Four agents.<br><em>One</em> sourced report.</h1>
+        <p class="landing-line">Type a topic below and watch each agent work in real time.</p>
+        <p class="landing-line sub">Lead Researcher plans it, Web Scout searches live, Fact Checker verifies it, Editor writes it up.</p>
+
+        <div class="search-bar-wrap" id="search-bar-wrap">
+          <div class="search-bar">
+            <input type="text" id="topic-input" placeholder="Search any topic — e.g. retrieval-augmented generation" autocomplete="off">
+            <button id="submit-btn">Run pipeline</button>
+          </div>
+          <div class="provider-chip" id="provider-chip"><span class="dot"></span>Running on local Ollama</div>
+        </div>
+      </div>
+
+      <div class="docked-search-slot" id="docked-search-slot"></div>
+
+      <div class="run-header" id="run-header">
+        <div class="run-header-top">
+          <h2 id="run-title">—</h2>
+          <span class="run-header-status" id="run-status">queued</span>
+        </div>
+        <div class="steps">
+          <div class="step-track" id="track-lead" style="--step-color: var(--c-lead);"></div>
+          <div class="step-track" id="track-scout" style="--step-color: var(--c-scout);"></div>
+          <div class="step-track" id="track-fact" style="--step-color: var(--c-fact);"></div>
+          <div class="step-track" id="track-editor" style="--step-color: var(--c-editor);"></div>
+        </div>
+        <div class="usage-chip" id="usage-chip" style="display:none;">
+          <span id="usage-tokens">0 tokens</span>
+          <span class="usage-sep">·</span>
+          <span id="usage-cost">$0.000000</span>
+        </div>
+        <div class="security-pill" id="security-pill" title="">🛡️ <span id="security-pill-text">security check flagged content</span></div>
+      </div>
+
+      <div class="stages" id="stages">
+        <div class="stage-card pending" id="stage-lead" style="--card-color: var(--c-lead);">
+          <div class="stage-card-head">
+            <div class="stage-icon">01</div>
+            <span class="stage-title">Lead Researcher</span>
+            <span class="stage-tag">planning</span>
+            <span class="stage-live-state" data-state>queued</span>
+          </div>
+          <div class="stage-output" data-output></div>
+        </div>
+        <div class="stage-card pending" id="stage-scout" style="--card-color: var(--c-scout);">
+          <div class="stage-card-head">
+            <div class="stage-icon">02</div>
+            <span class="stage-title">Web Scout</span>
+            <span class="stage-tag">searching</span>
+            <span class="stage-live-state" data-state>queued</span>
+          </div>
+          <div class="stage-output" data-output></div>
+        </div>
+        <div class="stage-card pending" id="stage-fact" style="--card-color: var(--c-fact);">
+          <div class="stage-card-head">
+            <div class="stage-icon">03</div>
+            <span class="stage-title">Fact Checker</span>
+            <span class="stage-tag">cross-referencing</span>
+            <span class="stage-live-state" data-state>queued</span>
+          </div>
+          <div class="stage-output" data-output></div>
+        </div>
+        <div class="stage-card pending" id="stage-editor" style="--card-color: var(--c-editor);">
+          <div class="stage-card-head">
+            <div class="stage-icon">04</div>
+            <span class="stage-title">Editor</span>
+            <span class="stage-tag">compiling</span>
+            <span class="stage-live-state" data-state>queued</span>
+          </div>
+          <div class="stage-output" data-output></div>
+        </div>
+      </div>
+
+      <div class="report-wrap" id="report-wrap">
+        <div class="report-card">
+          <div class="report-eyebrow" id="report-eyebrow">Final report</div>
+          <div class="report-body" id="report-body"></div>
+          <div class="report-actions" id="report-actions">
+            <button class="ghost-btn" id="copy-btn">Copy markdown</button>
+            <button class="ghost-btn" id="download-btn">Download .md</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- Settings / provider modal -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <h3>Model provider</h3>
+    <p class="desc">By default, this runs on a local Ollama model — free, but limited by your machine's RAM. Connect a cloud API key for faster, more capable runs.</p>
+
+    <span class="field-label">Backend URL</span>
+    <input type="text" id="backend-url-input" placeholder="http://127.0.0.1:8000">
+
+    <span class="field-label">Provider</span>
+    <div class="provider-options">
+      <div class="provider-opt active" data-provider="ollama">Local · Ollama</div>
+      <div class="provider-opt" data-provider="groq">Groq (free)</div>
+      <div class="provider-opt" data-provider="anthropic">Claude</div>
+      <div class="provider-opt" data-provider="openai">OpenAI</div>
+    </div>
+
+    <div id="key-field-wrap">
+      <span class="field-label">API key</span>
+      <input type="password" id="api-key-input" placeholder="Paste your API key">
+    </div>
+
+    <p class="modal-note">Your key is stored only in this browser (localStorage) and sent directly to your own backend for this run only — never written to disk or logged there either. No Claude/OpenAI key? Groq offers a free key at console.groq.com/keys, no credit card needed. Because it travels as a URL parameter, avoid this on anything but your own machine/backend. Leave the provider on Ollama to skip keys entirely (local use only — Ollama can't run on most hosting platforms).</p>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" id="modal-cancel">Cancel</button>
+      <button class="btn-primary" id="modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Backend URL is configurable so this same file works both locally
+  // (uvicorn on 127.0.0.1:8000) and deployed (Vercel frontend pointed at
+  // a Render/Railway-hosted backend). Persisted in localStorage; editable
+  // via the settings modal's "Backend URL" field.
+  let API_BASE = localStorage.getItem("sentinel_backend_url") || "http://127.0.0.1:8000";
+
+  const stageMap = {
+    "Lead Researcher": { card: document.getElementById("stage-lead"), track: document.getElementById("track-lead") },
+    "Web Scout":        { card: document.getElementById("stage-scout"), track: document.getElementById("track-scout") },
+    "Fact Checker":     { card: document.getElementById("stage-fact"), track: document.getElementById("track-fact") },
+    "Editor":           { card: document.getElementById("stage-editor"), track: document.getElementById("track-editor") },
+  };
+
+  const landingStage = document.getElementById("landing-stage");
+  const dockedSearchSlot = document.getElementById("docked-search-slot");
+  const runHeader = document.getElementById("run-header");
+  const runTitle = document.getElementById("run-title");
+  const runStatus = document.getElementById("run-status");
+  const stages = document.getElementById("stages");
+  const reportWrap = document.getElementById("report-wrap");
+  const reportBody = document.getElementById("report-body");
+  const reportEyebrow = document.getElementById("report-eyebrow");
+  const reportActions = document.getElementById("report-actions");
+  const input = document.getElementById("topic-input");
+  const submitBtn = document.getElementById("submit-btn");
+  const providerChip = document.getElementById("provider-chip");
+  const securityPill = document.getElementById("security-pill");
+  const securityPillText = document.getElementById("security-pill-text");
+
+  // ---------- Settings / provider state ----------
+  let settings = JSON.parse(localStorage.getItem("sentinel_settings") || '{"provider":"ollama","apiKey":""}');
+
+  function updateProviderUI() {
+    const labels = { ollama: "Local · Ollama", groq: "Groq", anthropic: "Claude", openai: "OpenAI" };
+    const label = labels[settings.provider] || settings.provider;
+    document.getElementById("settings-label").textContent = label;
+    const connected = settings.provider !== "ollama" && settings.apiKey;
+    document.getElementById("settings-btn").classList.toggle("connected", !!connected);
+
+    providerChip.classList.toggle("connected", !!connected);
+    providerChip.innerHTML = connected
+      ? `<span class="dot"></span>Running on ${label} (your key)`
+      : `<span class="dot"></span>Running on local Ollama`;
+  }
+  updateProviderUI();
+
+  function refreshBackendChecks() {
+    fetch(`${API_BASE}/config`).then(r => r.json()).then(cfg => {
+      if (!settings.apiKey || settings.provider === "ollama") {
+        providerChip.innerHTML = `<span class="dot"></span>Running on local Ollama (${cfg.ollama_model})`;
+      }
+    }).catch(() => {});
+
+    fetch(`${API_BASE}/health`)
+      .then(r => r.json())
+      .then(data => {
+        const chip = document.getElementById("health-chip");
+        chip.classList.remove("error");
+        chip.classList.add("ok");
+        document.getElementById("health-label").textContent = `${data.documents} chunks indexed`;
+      })
+      .catch(() => {
+        const chip = document.getElementById("health-chip");
+        chip.classList.remove("ok");
+        chip.classList.add("error");
+        document.getElementById("health-label").textContent = "Backend unreachable — check Backend URL in settings";
+      });
+  }
+  refreshBackendChecks();
+
+  const modalBackdrop = document.getElementById("modal-backdrop");
+  const settingsBtn = document.getElementById("settings-btn");
+  const apiKeyInput = document.getElementById("api-key-input");
+  const backendUrlInput = document.getElementById("backend-url-input");
+
+  settingsBtn.addEventListener("click", () => {
+    apiKeyInput.value = settings.apiKey || "";
+    backendUrlInput.value = API_BASE;
+    document.querySelectorAll(".provider-opt").forEach(el => {
+      el.classList.toggle("active", el.dataset.provider === settings.provider);
+    });
+    document.getElementById("key-field-wrap").style.display = settings.provider === "ollama" ? "none" : "block";
+    modalBackdrop.classList.add("active");
+  });
+
+  document.querySelectorAll(".provider-opt").forEach(el => {
+    el.addEventListener("click", () => {
+      document.querySelectorAll(".provider-opt").forEach(x => x.classList.remove("active"));
+      el.classList.add("active");
+      document.getElementById("key-field-wrap").style.display = el.dataset.provider === "ollama" ? "none" : "block";
+    });
+  });
+
+  document.getElementById("modal-cancel").addEventListener("click", () => modalBackdrop.classList.remove("active"));
+
+  document.getElementById("modal-save").addEventListener("click", () => {
+    const provider = document.querySelector(".provider-opt.active").dataset.provider;
+    const apiKey = apiKeyInput.value.trim();
+    settings = { provider, apiKey };
+    localStorage.setItem("sentinel_settings", JSON.stringify(settings));
+
+    const newBackendUrl = backendUrlInput.value.trim().replace(/\/$/, "");
+    if (newBackendUrl && newBackendUrl !== API_BASE) {
+      API_BASE = newBackendUrl;
+      localStorage.setItem("sentinel_backend_url", API_BASE);
+      refreshBackendChecks();
+    }
+
+    updateProviderUI();
+    modalBackdrop.classList.remove("active");
+  });
+
+  // ---------- Agent nav ----------
+  document.querySelectorAll(".agent-nav-item").forEach(el => {
+    el.addEventListener("click", () => {
+      const name = el.dataset.agent;
+      const ref = stageMap[name];
+      if (!ref) return;
+      document.querySelectorAll(".agent-nav-item").forEach(x => x.classList.remove("selected"));
+      el.classList.add("selected");
+      ref.card.scrollIntoView({ behavior: "smooth", block: "center" });
+      ref.card.classList.add("highlighted");
+      setTimeout(() => ref.card.classList.remove("highlighted"), 1200);
+    });
+  });
+
+  function setAgentNavDot(name, state) {
+    const item = document.querySelector(`.agent-nav-item[data-agent="${name}"]`);
+    if (!item) return;
+    const icon = item.querySelector(".agent-nav-icon");
+    icon.classList.remove("state-running", "state-done");
+    if (state === "running") icon.classList.add("state-running");
+    if (state === "done") icon.classList.add("state-done");
+  }
+
+  // ---------- Document upload (per-collection RAG) ----------
+  // null = use the backend's shared default knowledge base (data/documents/).
+  // Once set, this collection is sent with every /research call so the
+  // Fact Checker cross-references against this specific uploaded PDF only.
+  let activeCollectionName = null;
+
+  const pdfUploadInput = document.getElementById("pdf-upload-input");
+  const docUploadLabel = document.getElementById("doc-upload-label");
+  const docSourceCurrent = document.getElementById("doc-source-current");
+  const docSourceTag = document.getElementById("doc-source-tag");
+  const docResetBtn = document.getElementById("doc-reset-btn");
+
+  pdfUploadInput.addEventListener("change", async () => {
+    const file = pdfUploadInput.files[0];
+    if (!file) return;
+
+    docUploadLabel.textContent = "Uploading…";
+    document.querySelector(".doc-upload-btn").classList.add("uploading");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`${API_BASE}/upload-pdf`, { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (data.error) {
+        docUploadLabel.textContent = `${data.error} — try another PDF`;
+        document.querySelector(".doc-upload-btn").classList.remove("uploading");
+        return;
+      }
+
+      activeCollectionName = data.collection_name;
+      docSourceCurrent.querySelector(".doc-source-name").textContent = data.filename;
+      docSourceTag.textContent = `${data.chunks} chunks`;
+      docUploadLabel.textContent = "Upload a different PDF";
+      docResetBtn.style.display = "block";
+      document.querySelector(".doc-upload-btn").classList.remove("uploading");
+
+      if (data.sanitized) {
+        docSourceTag.textContent += " · sanitized";
+        docSourceTag.title = "Some content in this PDF matched known prompt-injection patterns and was redacted before indexing.";
+      }
+    } catch (err) {
+      docUploadLabel.textContent = "Upload failed — check backend";
+      document.querySelector(".doc-upload-btn").classList.remove("uploading");
+    }
+  });
+
+  docResetBtn.addEventListener("click", () => {
+    activeCollectionName = null;
+    docSourceCurrent.querySelector(".doc-source-name").textContent = "Shared knowledge base";
+    docSourceTag.textContent = "default";
+    docSourceTag.title = "";
+    docUploadLabel.textContent = "Upload a PDF for this topic";
+    docResetBtn.style.display = "none";
+  });
+
+  // ---------- Sidebar resize (drag handle) ----------
+  const SIDEBAR_MIN = 200;
+  const SIDEBAR_MAX = 420;
+  const resizeHandle = document.getElementById("sidebar-resize-handle");
+
+  const savedWidth = localStorage.getItem("sentinel_sidebar_width");
+  if (savedWidth) {
+    document.documentElement.style.setProperty("--sidebar-width", `${savedWidth}px`);
+  }
+
+  let isResizing = false;
+
+  resizeHandle.addEventListener("mousedown", (e) => {
+    isResizing = true;
+    resizeHandle.classList.add("dragging");
+    document.body.classList.add("resizing-sidebar");
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!isResizing) return;
+    const newWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX));
+    document.documentElement.style.setProperty("--sidebar-width", `${newWidth}px`);
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!isResizing) return;
+    isResizing = false;
+    resizeHandle.classList.remove("dragging");
+    document.body.classList.remove("resizing-sidebar");
+    const currentWidth = getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width").trim();
+    localStorage.setItem("sentinel_sidebar_width", parseInt(currentWidth));
+  });
+
+  // ---------- Run history (client-side session memory) ----------
+  let history = [];
+  let activeHistoryId = null;
+
+  function renderHistory() {
+    const list = document.getElementById("run-history");
+    if (history.length === 0) {
+      list.innerHTML = '<div class="history-empty">Nothing yet — run a topic above and it\'ll show up here for quick recall.</div>';
+      return;
+    }
+    list.innerHTML = "";
+    history.slice().reverse().forEach(h => {
+      const el = document.createElement("div");
+      el.className = "history-item" + (h.id === activeHistoryId ? " active" : "");
+      const dotClass = h.status === "running" ? "live" : h.status === "done" ? "done" : "";
+      const timeLabel = h.elapsedSeconds ? `${h.elapsedSeconds}s` : h.status;
+      el.innerHTML = `
+        <div class="history-item-title">${h.topic}</div>
+        <div class="history-item-meta"><span class="history-dot ${dotClass}"></span>${timeLabel}</div>
+      `;
+      el.addEventListener("click", () => loadFromHistory(h.id));
+      list.appendChild(el);
+    });
+  }
+
+  function dockSearchBar() {
+    if (!landingStage.classList.contains("hidden")) {
+      dockedSearchSlot.appendChild(document.getElementById("search-bar-wrap"));
+      landingStage.classList.add("hidden");
+    }
+  }
+
+  function loadFromHistory(id) {
+    const h = history.find(x => x.id === id);
+    if (!h) return;
+    activeHistoryId = id;
+
+    dockSearchBar();
+    runHeader.classList.add("active");
+    stages.classList.add("active");
+    runTitle.textContent = h.topic;
+    runStatus.textContent = h.elapsedSeconds ? `done · ${h.elapsedSeconds}s` : h.status;
+
+    resetStages();
+    Object.entries(h.stageData || {}).forEach(([name, d]) => setStage(name, d.state, d.content));
+
+    securityPill.classList.toggle("active", !!h.securityFlags && h.securityFlags.length > 0);
+    if (h.securityFlags && h.securityFlags.length) {
+      securityPillText.textContent = `${h.securityFlags.length} security check(s) flagged content`;
+    }
+
+    if (h.report) {
+      currentReport = h.report;
+      reportEyebrow.textContent = "Final report";
+      reportActions.style.display = "flex";
+      reportBody.innerHTML = renderMarkdown(h.report);
+      reportWrap.classList.add("active");
+    } else if (h.blocked) {
+      showBlocked(h.blocked.stage, h.blocked.reason);
+    } else {
+      reportWrap.classList.remove("active");
+    }
+    renderHistory();
+  }
+
+  // ---------- Pipeline logic ----------
+  function setStage(name, state, content) {
+    const ref = stageMap[name];
+    if (!ref) return;
+    ref.card.classList.remove("pending", "running", "done");
+    ref.card.classList.add(state);
+    ref.track.classList.remove("running", "done");
+    if (state !== "pending") ref.track.classList.add(state);
+    ref.card.querySelector("[data-state]").textContent =
+      state === "running" ? "working" : state === "done" ? "done" : "queued";
+    if (content !== undefined) ref.card.querySelector("[data-output]").textContent = content;
+    setAgentNavDot(name, state);
+  }
+
+  function appendStageOutput(name, line) {
+    const ref = stageMap[name];
+    if (!ref) return;
+    const out = ref.card.querySelector("[data-output]");
+    out.textContent = out.textContent ? out.textContent + "\n\n" + line : line;
+    out.scrollTop = out.scrollHeight;
+  }
+
+  function resetStages() {
+    Object.entries(stageMap).forEach(([name, ref]) => {
+      ref.card.classList.remove("running", "done");
+      ref.card.classList.add("pending");
+      ref.track.classList.remove("running", "done");
+      ref.card.querySelector("[data-state]").textContent = "queued";
+      ref.card.querySelector("[data-output]").textContent = "";
+      setAgentNavDot(name, "pending");
+    });
+    securityPill.classList.remove("active");
+  }
+
+  function renderMarkdown(md) {
+    let html = md
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/^### (.*$)/gim, "<h3>$1</h3>")
+      .replace(/^## (.*$)/gim, "<h2>$1</h2>")
+      .replace(/^# (.*$)/gim, "<h1>$1</h1>")
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\[(.*?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/^\> (.*$)/gim, "<blockquote>$1</blockquote>")
+      .replace(/^\s*[\*\-]\s+(.*$)/gim, "<li>$1</li>")
+      .replace(/(<li>.*<\/li>)/gims, "<ul>$1</ul>")
+      .replace(/\n\n/g, "</p><p>");
+    return "<p>" + html + "</p>";
+  }
+
+  // Builds a short human-readable summary of each agent's structured
+  // "result" payload, since the backend sends real objects (sub_tasks
+  // lists, claim/verdict arrays), not pre-formatted strings.
+  function summarizeResult(agentName, data) {
+    if (agentName === "Lead Researcher" && data.sub_tasks) {
+      return data.sub_tasks.map((s, i) => `${i + 1}. ${s}`).join("\n");
+    }
+    if (agentName === "Web Scout") {
+      const sources = (data.sources || []).map(s => s.title || s.url).join(", ");
+      const claims = (data.claims || []).map(c => `• ${c}`).join("\n");
+      return `Sub-task: ${data.sub_task}\nSources: ${sources || "none found"}\n\n${claims}`;
+    }
+    if (agentName === "Fact Checker") {
+      const verdicts = (data.verified_claims || [])
+        .map(v => `[${v.verdict}] ${v.claim}${v.note ? " — " + v.note : ""}`)
+        .join("\n");
+      return `Sub-task: ${data.sub_task}\n\n${verdicts}`;
+    }
+    return JSON.stringify(data);
+  }
+
+  let currentReport = "";
+
+  function showBlocked(stage, reason) {
+    reportEyebrow.textContent = "Blocked";
+    reportActions.style.display = "none";
+    reportBody.innerHTML = `
+      <div class="moderation-block">
+        <strong>Content moderation blocked this ${stage === "input" ? "topic" : "generated report"}.</strong>
+        <p>${reason}</p>
+      </div>
+    `;
+    reportWrap.classList.add("active");
+  }
+
+  function runPipeline() {
+    const topic = input.value.trim();
+    if (topic.length < 3) return;
+
+    const entry = {
+      id: Date.now(), topic, status: "running", stageData: {},
+      report: null, blocked: null, elapsedSeconds: null, securityFlags: [],
+    };
+    history.push(entry);
+    activeHistoryId = entry.id;
+    const startTime = Date.now();
+    renderHistory();
+
+    dockSearchBar();
+    resetStages();
+    reportWrap.classList.remove("active");
+    reportEyebrow.textContent = "Final report";
+    reportActions.style.display = "flex";
+    runHeader.classList.add("active");
+    stages.classList.add("active");
+    runTitle.textContent = topic;
+    runStatus.textContent = "running";
+    document.getElementById("usage-chip").style.display = "none";
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Running…";
+    input.value = "";
+
+    const params = new URLSearchParams({ query: topic, mode: "hierarchical" });
+    if (settings.provider !== "ollama" && settings.apiKey) {
+      params.set("provider", settings.provider);
+      params.set("api_key", settings.apiKey);
+    }
+    if (activeCollectionName) {
+      params.set("collection_name", activeCollectionName);
+    }
+
+    const es = new EventSource(`${API_BASE}/research?${params.toString()}`);
+
+    es.addEventListener("status", (e) => {
+      const data = JSON.parse(e.data);
+      entry.stageData[data.agent] = entry.stageData[data.agent] || {};
+      entry.stageData[data.agent].state = data.state;
+      setStage(data.agent, data.state);
+    });
+
+    es.addEventListener("result", (e) => {
+      const data = JSON.parse(e.data);
+      const summary = summarizeResult(data.agent, data.data);
+      appendStageOutput(data.agent, summary);
+      entry.stageData[data.agent] = { state: "done", content: stageMap[data.agent].card.querySelector("[data-output]").textContent };
+    });
+
+    es.addEventListener("security", (e) => {
+      const data = JSON.parse(e.data);
+      entry.securityFlags.push(data);
+      securityPill.classList.add("active");
+      securityPillText.textContent = `${entry.securityFlags.length} security check(s) flagged content`;
+      securityPill.title = data.event_type === "prompt_injection_detected"
+        ? `Prompt-injection pattern neutralized in content from "${data.details.source}"`
+        : `${data.event_type}: ${JSON.stringify(data.details)}`;
+    });
+
+    es.addEventListener("usage", (e) => {
+      const data = JSON.parse(e.data);
+      const chip = document.getElementById("usage-chip");
+      chip.style.display = "flex";
+      const totalTokens = (data.input_tokens || 0) + (data.output_tokens || 0);
+      document.getElementById("usage-tokens").textContent = `${totalTokens.toLocaleString()} tokens`;
+      document.getElementById("usage-cost").textContent =
+        data.estimated_cost_usd > 0 ? `~$${data.estimated_cost_usd.toFixed(6)}` : "free (local)";
+      entry.usage = data;
+    });
+
+    es.addEventListener("blocked", (e) => {
+      const data = JSON.parse(e.data);
+      entry.status = "blocked";
+      entry.blocked = data;
+      runStatus.textContent = "blocked by moderation";
+      showBlocked(data.stage, data.reason);
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Run pipeline";
+      renderHistory();
+      es.close();
+    });
+
+    es.addEventListener("error", (e) => {
+      // Backend-emitted pipeline error (e.g. LLM call failed) — distinct
+      // from EventSource's own connection-level onerror below.
+      let msg = "Something went wrong running the pipeline.";
+      try { msg = JSON.parse(e.data).message || msg; } catch (_) {}
+      entry.status = "error";
+      runStatus.textContent = "error";
+      reportEyebrow.textContent = "Error";
+      reportActions.style.display = "none";
+      reportBody.innerHTML = `<div class="moderation-block"><strong>Pipeline error</strong><p>${msg}</p></div>`;
+      reportWrap.classList.add("active");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Run pipeline";
+      renderHistory();
+      es.close();
+    });
+
+    es.addEventListener("done", (e) => {
+      const data = JSON.parse(e.data);
+      currentReport = data.report_markdown;
+      entry.report = data.report_markdown;
+      entry.status = "done";
+      entry.elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+      reportEyebrow.textContent = "Final report";
+      reportActions.style.display = "flex";
+      reportBody.innerHTML = renderMarkdown(data.report_markdown);
+      reportWrap.classList.add("active");
+      runStatus.textContent = `done · ${entry.elapsedSeconds}s`;
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Run pipeline";
+      reportWrap.scrollIntoView({ behavior: "smooth", block: "start" });
+      renderHistory();
+      es.close();
+    });
+
+    es.onerror = () => {
+      // Fires on natural stream close too, so only surface it as a UI
+      // error if we never got a done/blocked/error event for this run.
+      if (entry.status === "running") {
+        entry.status = "error";
+        runStatus.textContent = "connection lost";
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Run pipeline";
+        renderHistory();
+      }
+      es.close();
+    };
+  }
+
+  submitBtn.addEventListener("click", runPipeline);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") runPipeline(); });
+
+  document.getElementById("copy-btn").addEventListener("click", () => {
+    navigator.clipboard.writeText(currentReport);
+    const btn = document.getElementById("copy-btn");
+    const original = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  });
+
+  document.getElementById("download-btn").addEventListener("click", () => {
+    const blob = new Blob([currentReport], { type: "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "sentinel_search_report.md";
+    a.click();
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+.env
+venv/
+__pycache__/
+*.pyc
+data/vector_db/*
+data/usage_log.jsonl
+data/security_log.jsonl
+eval/results/
+.pytest_cache/
+.git/
+*.md
