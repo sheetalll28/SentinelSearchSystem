@@ -1,252 +1,213 @@
 # 🛰️ SentinelSearch
 
-**An autonomous, provider-agnostic multi-agent research system.**
-SentinelSearch takes a research query, breaks it down into smaller tasks, searches the live web for relevant information, cross-checks the findings against a local knowledge base using RAG, and finally generates a structured Markdown report with citations.
+**A multi-agent research assistant I built on my own to learn how LLM agent systems work end to end.**
 
-The system uses four AI agents, with each agent handling a different part of the research process.
+You give it a research question. It breaks the question into sub-tasks, searches the web, checks the claims it found against a local knowledge base (RAG), and writes a Markdown report that labels every claim as **SUPPORTED**, **CONTRADICTED** or **UNVERIFIED** instead of presenting everything as fact.
 
-This implementation also extends the original internship prototype in two important ways:
+## What I wanted to learn
 
-1. **LLM-agnostic** — It works with Claude, OpenAI, or a fully local/offline Ollama model. The provider can be changed using a single `.env` variable without changing the code.
-2. **Corpus-agnostic RAG** — The system can ingest any collection of PDFs/TXT files, or selected URLs, placed inside `data/documents/`. This avoids depending on one particular document or dataset.
+- How to split a task across several LLM agents with clear roles and strict output formats.
+- How RAG really works, so I wrote the chunking, embedding and retrieval steps by hand instead of using a framework.
+- How to keep an application independent of any single LLM vendor.
+- How to protect an agent that reads untrusted web content (SSRF and prompt injection).
+- How to stream live progress to a browser with Server-Sent Events (SSE).
+- How to evaluate LLM output, using an LLM judge and checking it against human scores.
 
----
-
-## Architecture
+## How it works
 
 ```text
-User Query
+Research query
    │
    ▼
-Agent A — Lead Researcher   (deconstructs query → 3-5 sub-tasks)
+Input moderation
    │
-   ├──▶ Agent B — Web Scout      (searches the web, extracts claims)
-   │        │
-   │        ▼
-   └──▶ Agent C — Fact Checker   (cross-verifies claims vs. local RAG store)
-            │
-            ▼
-         Agent D — Editor          (synthesises verified findings → Markdown report)
-            │
-            ▼
-      Structured Markdown Report (with citations)
-```
-## SentinelSearch — LLM Abstraction Architecture
-                         ┌──────────────────────┐
-                         │   SentinelSearch      │
-                         │       Agents          │
-                         │                      │
-                         │ Research Agent       │
-                         │ Analysis Agent       │
-                         │ Evidence Agent       │
-                         │ Report Agent         │
-                         └──────────┬───────────┘
-                                    │
-                                    │ llm.chat(
-                                    │   system,
-                                    │   user,
-                                    │   max_tokens
-                                    │ )
-                                    ▼
-                         ┌──────────────────────┐
-                         │       BaseLLM        │
-                         │   Abstract Interface │
-                         │                      │
-                         │ + chat(...)          │
-                         └──────────┬───────────┘
-                                    │
-                  ┌─────────────────┼─────────────────┐
-                  │                 │                 │
-                  ▼                 ▼                 ▼
-          ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-          │  ClaudeLLM   │  │  OpenAILLM   │  │   GroqLLM    │
-          │              │  │              │  │              │
-          │ Anthropic SDK│  │ OpenAI SDK   │  │ OpenAI SDK   │
-          │              │  │              │  │ + Groq URL   │
-          └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
-                 │                 │                 │
-                 ▼                 ▼                 ▼
-             Claude API        OpenAI API         Groq API
-
-                                    │
-                                    │
-                              ┌─────┴─────┐
-                              │ OllamaLLM │
-                              │           │
-                              │ Ollama SDK│
-                              │ Local LLM │
-                              └───────────┘
-
-
-                  ┌─────────────────────────────┐
-                  │          get_llm()          │
-                  │                             │
-                  │ Reads provider/config       │
-                  │ and creates correct object  │
-                  └──────────────┬──────────────┘
-                                 │
-                ┌────────────────┼────────────────┐
-                │                │                │
-             anthropic         openai           groq
-                │                │                │
-                ▼                ▼                ▼
-             ClaudeLLM        OpenAILLM        GroqLLM
-                                      
-                              ollama
-                                 │
-                                 ▼
-                             OllamaLLM
-
-
-        ┌────────────────────────────────────────────────┐
-        │                 Supporting Layer               │
-        │                                                │
-        │  CONFIG                 COST_TRACKER           │
-        │  ├─ API Keys             ├─ Provider          │
-        │  ├─ Model Names          ├─ Model             │
-        │  ├─ Provider             ├─ Input Tokens      │
-        │  └─ Ollama Host          └─ Output Tokens     │
-        └────────────────────────────────────────────────┘
-
+   ▼
+Agent A: Lead Researcher        splits the query into 3 to 5 sub-tasks
+   │
+   ├── for each sub-task (in parallel, or one by one) ──────────────┐
+   │      Agent B: Web Scout       searches the web, extracts claims │
+   │             │                                                   │
+   │             ▼                                                   │
+   │      Agent C: Fact Checker    compares claims with the RAG store│
+   │                                                                 │
+   ◄─────────────────────────────────────────────────────────────────┘
+   │
+   ▼
+Agent D: Editor                  merges verified findings into one report
+   │
+   ▼
+Output moderation
+   │
+   ▼
+Markdown report (with sources and a token/cost summary)
 ```
 
-There are two orchestration modes available through the `--mode` flag:
+| Agent | Role | Output |
+| --- | --- | --- |
+| A: Lead Researcher | Deconstructs the query into non-overlapping, web-searchable sub-tasks. | JSON list of up to 5 sub-tasks |
+| B: Web Scout | Runs a web search, fetches the top page, removes suspicious text, extracts factual claims. | Sources and a JSON list of claims |
+| C: Fact Checker | Retrieves the 4 most relevant chunks from the vector store and judges each claim. | Verdict per claim: SUPPORTED, CONTRADICTED or UNVERIFIED, with a note |
+| D: Editor | Writes one structured report, one section per sub-task, and flags claims that are not supported. | Markdown report |
 
-* **sequential** — The sub-tasks are handled one after another: Agent A → B → C → D.
-* **hierarchical** (default) — The sub-tasks are distributed and Agents B/C can work concurrently before Agent D brings the results together.
+**Orchestration modes** (the `--mode` flag, or the toggle in the UI):
 
-## Project Layout
+- `hierarchical` (default): the sub-tasks run in parallel threads, then the Editor merges the results.
+- `sequential`: the sub-tasks run one after another.
+
+A run makes at most `2N + 2` model calls for `N` sub-tasks: one for the Lead, two per sub-task, and one for the Editor.
+
+## Features
+
+- **Provider-agnostic LLM layer.** Anthropic (Claude), OpenAI, Groq and Ollama (local) sit behind one interface. Switching is one environment variable, a CLI flag or a setting in the UI.
+- **RAG over any folder.** Ingest PDFs and TXT files from `data/documents/`, or web pages by URL. In the web UI you can also upload a PDF, which gets its own isolated collection that the Fact Checker uses for that run.
+- **Live progress.** The FastAPI backend streams agent status, results, usage and security events over SSE.
+- **Safety checks.** SSRF protection, prompt-injection redaction, input and output moderation, and an append-only audit log.
+- **Cost tracking.** Token usage and an estimated cost for every call.
+- **Evaluation.** An LLM-as-a-judge harness with a script that compares the judge to human scores.
+- **Three ways to run it.** Command line, web UI (FastAPI plus a static HTML page), or Streamlit.
+
+## LLM provider layer
+
+Every agent talks to one method, `llm.chat(system, user, max_tokens)`, and never touches a vendor SDK directly.
 
 ```text
-sentinel_search/
-├── config.py              # Loads .env into a unified Config object
-├── llm_providers.py       # Claude / OpenAI / Ollama behind a single interface
-├── search_tools.py        # DuckDuckGo (free) / Tavily / Serper unified interface
-├── moderation.py          # Input/output content moderation gate
-├── cost_tracker.py        # Token usage and estimated USD cost per query
-├── orchestrator.py        # Wires agents A→B→C→D, supporting sequential or hierarchical flow (CLI-ready)
-├── cli.py                 # Command-line entrypoint
-├── backend/main.py        # FastAPI server — streams live agent progress via SSE
-├── frontend/index.html    # Dark-themed live UI (communicates with backend/main.py)
-├── app_streamlit.py       # Streamlit alternative UI (simpler, lower maintenance)
-├── rag/
-│   ├── ingest.py           # Chunking and generalized document/URL ingestion
-│   └── vector_store.py     # ChromaDB abstraction layer
-├── agents/
-│   ├── base_agent.py       # Shared LLM-call and JSON-parsing utilities
-│   ├── lead_researcher.py  # Agent A
-│   ├── web_scout.py        # Agent B
-│   ├── fact_checker.py     # Agent C
-│   └── editor.py           # Agent D
-├── tests/                 # Unit tests (RAG chunking, agent logic; LLM calls mocked)
-├── data/documents/        # ← Add your PDFs/TXT files here
-├── .env.example
-└── requirements.txt
+Agents ──▶ BaseLLM.chat(system, user, max_tokens)
+              │
+   ┌──────────┼───────────┬───────────┐
+   ▼          ▼           ▼           ▼
+ClaudeLLM  OpenAILLM    GroqLLM    OllamaLLM
 ```
 
-## Setup
+- `get_llm(provider, api_key)` is the factory that returns the right client.
+- `GroqLLM` reuses the OpenAI SDK and points it at Groq's OpenAI-compatible endpoint. Groq has a free tier, which makes it handy for a public demo.
+- Each call is retried up to 3 times with exponential backoff, and every call is logged to the cost tracker.
+- An explicit `provider` or `api_key` always overrides the values loaded from `.env`, and the orchestrator builds a single client that all four agents share.
 
-```bash
-python3.11 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-```
+## RAG pipeline
 
-Configure `.env`:
+1. **Ingest.** `rag/ingest.py` reads every PDF and TXT file in a folder (or a list of URLs) and removes suspected prompt-injection text.
+2. **Chunk.** Fixed windows of 800 characters with 120 characters of overlap, ending on a sentence boundary when one falls past the halfway point.
+3. **Embed and store.** `all-MiniLM-L6-v2` (Sentence-Transformers) embeddings are stored in a persistent ChromaDB collection. Chunk IDs are `filename::index` and writes are upserts, so re-ingesting a file overwrites its chunks.
+4. **Retrieve.** The Fact Checker queries with the sub-task text and takes the top 4 chunks.
 
-* `LLM_PROVIDER=anthropic|openai|ollama` along with the corresponding API key/model.
-* `SEARCH_PROVIDER=duckduckgo` (free, no key) `| tavily | serper`
-* For Ollama, start `ollama serve` and run `ollama pull llama3.1` locally first.
-
-## Usage
-
-**1. Build the knowledge base** by adding your PDFs/TXT files to `data/documents/`:
-
-```bash
-python cli.py ingest
-# Or also ingest specific web pages into the same store:
-python cli.py ingest --urls https://example.com/article1 https://example.com/article2
-```
-
-**2. Run a research query from the CLI:**
-
-```bash
-python cli.py run "What are the tradeoffs between RAG and fine-tuning?" \
-    --mode hierarchical --out report.md
-```
-
-**3. Or launch the interactive web UI (FastAPI backend + custom frontend):**
-
-```bash
-uvicorn backend.main:app --reload
-```
-
-Then open `frontend/index.html` directly in your browser. It will connect automatically to `http://127.0.0.1:8000`.
-
-The UI shows the progress of the four agents through **Server-Sent Events**. The Lead Researcher, Web Scout, Fact Checker, and Editor cards update as each stage finishes. Once the research is complete, the generated Markdown report is displayed along with copy/download buttons and a running token/cost tracker.
-
-Additional features include:
-
-* **Runtime provider switching** — The settings panel lets you choose Ollama, Claude, or OpenAI and provide an API key for that request without changing `.env`. The API key is sent as a URL query parameter to the local backend for that request only and is not persisted or logged. This is intended for local development and should not be exposed beyond the local machine.
-* **Per-document RAG** — Uploading a PDF from the sidebar creates a separate ChromaDB collection for that document. This allows the Fact Checker to use that particular document as its reference instead of the default knowledge base until you switch back.
-* **Security indicator** — The UI shows when Web Scout content triggers SSRF or prompt-injection checks in `security.py`.
-
-One limitation is that individual LLM calls are not streamed word-by-word. Each event is shown once an agent has finished generating its complete output. Even so, having four separate stages makes the progress easier to follow compared with a single long loading screen.
-
-**4. Or use the streamlined Streamlit interface:**
-
-```bash
-streamlit run app_streamlit.py
-```
-
-This uses the same pipeline with a simpler interface and less frontend code to maintain. It can be useful if you prefer running everything through a single process.
+ChromaDB is only touched in `rag/vector_store.py`, so swapping the vector database means rewriting that one file.
 
 ## Security
 
-Since the system allows agents to fetch web content and pass that content to an LLM, there are some additional security risks to consider. Two of the main ones are handled in `security.py`:
+The system fetches web pages and pastes their text into LLM prompts, so `security.py` handles two risks:
 
-* **SSRF protection** — Every URL that Web Scout or the RAG ingester tries to access is checked using `is_safe_url()` before the request is made. It blocks non-http(s) schemes and checks whether the hostname resolves to loopback, private/LAN, link-local, or cloud metadata addresses such as `169.254.169.254`. This helps prevent malicious or compromised search results from being used for SSRF attacks.
-* **Prompt-injection defense** — Scraped web pages and ingested documents are checked using `detect_prompt_injection()` for common prompt-injection phrases such as "ignore previous instructions" or "reveal your system prompt". When a match is found, `sanitize_external_content()` redacts the suspicious part while keeping the surrounding content instead of removing the entire source.
-* **Audit log** — Blocked requests and detected injection attempts are recorded in `data/security_log.jsonl` through `AUDIT_LOG`. These events are also shown in the FastAPI UI through `security` SSE events, making it possible to review what happened after a run.
-* These checks work alongside the existing `moderation.py` gate for the user's query and the final generated report.
+- **SSRF.** `is_safe_url()` runs before every fetch. It blocks non-http(s) schemes and any host that resolves to a loopback, private, link-local or reserved address, which includes the cloud metadata address `169.254.169.254`.
+- **Prompt injection.** `sanitize_external_content()` scans scraped pages, search snippets and ingested documents for known injection phrases (such as "ignore previous instructions"). Matches are replaced with a marker while the rest of the text is kept.
+- **Audit log.** Blocked fetches and detected injections are appended to `data/security_log.jsonl` and also sent to the UI as `security` events.
+- **Least privilege.** Agents can search and read, but they cannot write files or run commands.
+- **Moderation.** `moderation.py` checks the query on the way in and the report on the way out. It uses OpenAI's Moderation API when `OPENAI_API_KEY` is set, and a small local block-list otherwise.
 
-The security checks are covered in `tests/test_security.py`, including SSRF blocking, injection detection, and clean-text handling.
+## Evaluation
 
-## LLM-as-a-Judge Evaluation
+`eval/judge.py` runs the full pipeline on five sample queries, then a separate LLM call scores each report from 1 to 5 on:
 
-As part of Phase 5, `eval/judge.py` runs the complete pipeline on five sample queries and uses a separate LLM to score each generated report from 1–5.
-
-The reports are evaluated on:
-
-* **factual_accuracy** — Checks whether unverified or conflicting claims are clearly marked instead of being presented as confirmed facts. The evaluation favors honest uncertainty and penalizes overconfident answers.
-* **completeness** — Checks whether the report covers the research query properly.
-* **readability** — Looks at the structure, clarity, organization, and unnecessary repetition in the report.
+- **factual_accuracy**: are unverified or contradicted claims flagged instead of stated as fact? Overconfidence is penalized.
+- **completeness**: does the report cover the question?
+- **readability**: is it clear, organized and free of repetition?
 
 ```bash
-python -m eval.judge                # Run all 5 built-in sample queries
-python -m eval.judge --n 2           # Quick run: first 2 queries only
+python -m eval.judge                 # all 5 sample queries
+python -m eval.judge --n 2           # first 2 only
 ```
 
-Results are saved to `eval/results/eval_<timestamp>.{json,csv}`, and an overall summary is printed in the console.
-
-**To compare the judge scores with a human evaluation**, copy `eval/human_scores_template.csv` to `eval/human_scores.csv`, read the generated reports, add your own 1–5 scores, and then run:
+Results are written to `eval/results/eval_<timestamp>.{json,csv}`. To check the judge against a human, copy `eval/human_scores_template.csv` to `eval/human_scores.csv`, fill in your own 1 to 5 scores, and run:
 
 ```bash
 python -m eval.compare eval/results/eval_<timestamp>.csv eval/human_scores.csv
 ```
 
-This gives a per-dimension comparison between the automated judge and human scores, along with the mean absolute difference. This helps check whether the automated evaluation is actually aligned with human judgment instead of simply giving consistently high scores.
+This prints the per-dimension difference and the mean absolute difference between judge and human.
 
-## Docker (Bonus)
+## Setup
+
+Requires Python 3.11 or newer.
 
 ```bash
-cp .env.example .env   # Fill in your API keys first
+python3.11 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Create a `.env` file in the project root. A minimal free setup using Groq:
+
+```env
+LLM_PROVIDER=groq
+GROQ_API_KEY=your-key-here
+SEARCH_PROVIDER=duckduckgo
+```
+
+All settings (every one has a default except the API keys):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `anthropic` | `anthropic`, `openai`, `groq` or `ollama` |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | none, `claude-sonnet-4-6` | Claude settings |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | none, `gpt-4o` | OpenAI settings (the key also enables the OpenAI Moderation API) |
+| `GROQ_API_KEY`, `GROQ_MODEL` | none, `llama-3.3-70b-versatile` | Groq settings |
+| `OLLAMA_HOST`, `OLLAMA_MODEL` | `http://localhost:11434`, `llama3.1` | Local model (run `ollama serve` and `ollama pull llama3.1` first) |
+| `SEARCH_PROVIDER` | `duckduckgo` | `duckduckgo` (free, no key), `tavily` or `serper` |
+| `TAVILY_API_KEY`, `SERPER_API_KEY` | none | Keys for those search providers |
+| `VECTOR_DB_PATH`, `DOCUMENTS_PATH` | `./data/vector_db`, `./data/documents` | Where the vector store and source documents live |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-Transformers model |
+| `CHUNK_SIZE`, `CHUNK_OVERLAP` | `800`, `120` | Chunking in characters |
+| `ENABLE_MODERATION` | `true` | Turn the moderation gate on or off |
+
+## Usage
+
+**1. Build the knowledge base.** Put PDFs or TXT files in `data/documents/`, then:
+
+```bash
+python cli.py ingest
+python cli.py ingest --urls https://example.com/article1 https://example.com/article2
+```
+
+**2. Run a query from the command line:**
+
+```bash
+python cli.py run "What are the tradeoffs between RAG and fine-tuning?" \
+    --mode hierarchical --provider groq --out report.md --json-out trace.json
+```
+
+**3. Run the web UI:**
+
+```bash
+uvicorn backend.main:app --reload
+```
+
+Then open `frontend/index.html` in a browser. It connects to `http://127.0.0.1:8000` by default, and the settings panel lets you point it at another backend URL (saved in your browser). The UI shows one card per agent that updates as each stage finishes, a security indicator, a running token and cost counter, and copy and download buttons for the report. You can also choose a provider and enter an API key for a single run, or upload a PDF to fact-check against.
+
+**4. Or run the Streamlit version:**
+
+```bash
+streamlit run app_streamlit.py
+```
+
+**5. Or use Docker:**
+
+```bash
 docker compose up --build
 ```
 
-The API will then be available at `http://127.0.0.1:8000`. Open `frontend/index.html` in the browser as usual; it connects to the same port. The `data/` directory is mounted as a volume so that the vector store and logs remain available after container restarts.
+The API is then at `http://127.0.0.1:8000`, and `data/` is mounted as a volume so the vector store and logs survive restarts. The container listens on `$PORT` (default 8000). I have not verified the Docker build on every platform, so test it locally before relying on it.
 
-**Note on testing:** The `Dockerfile` and `docker-compose.yml` follow standard practices, including a slim Python base image, `pip install -r requirements.txt`, running `uvicorn` on port 8000, and mounting the `data/` directory as a volume. However, I have not verified the Docker build in this environment, so it should be tested locally with `docker compose up --build` before using it for a production deployment.
+## API
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /research` | Runs the pipeline and streams SSE events. Query parameters: `query` (required), `mode`, `provider`, `api_key`, `collection_name`. |
+| `POST /upload-pdf` | Ingests a PDF into its own collection and returns the `collection_name` to pass to `/research`. |
+| `POST /ingest` | Ingests everything in `data/documents/`, plus optional URLs. |
+| `GET /config` | Shows the active provider and settings (no secrets). |
+| `GET /health` | Health check with the document count. |
+| `GET /security-log` | Recent audit-log events. |
+
+`/research` streams these events: `status`, `result`, `usage`, `security`, `blocked`, `error`, `done` (the final report and usage summary).
+
+Individual LLM calls are not streamed token by token. An event is sent when an agent finishes its whole output, and four separate stages are enough to make progress easy to follow.
 
 ## Testing
 
@@ -254,44 +215,67 @@ The API will then be available at `http://127.0.0.1:8000`. Open `frontend/index.
 pytest tests/ -v
 ```
 
-The tests cover the document chunking logic, including size limits, overlap, and edge cases. They also cover agent tool-calling logic such as JSON plan parsing, fallback handling for malformed output, and web-search invocation.
+LLM and search calls are mocked, so the tests need no API keys or network. They cover chunking, JSON parsing and fallbacks, the Lead Researcher and Web Scout, provider routing, the upload endpoint, the judge's output handling, and the SSRF and injection checks.
 
-LLM and search calls are mocked, so the tests can be run without API keys or an active network connection.
+## Project layout
 
-## Known Limitations & Failure Modes
+```text
+├── config.py              # Settings loaded from environment variables
+├── llm_providers.py       # Claude / OpenAI / Groq / Ollama behind one interface
+├── search_tools.py        # DuckDuckGo / Tavily / Serper search and guarded page fetch
+├── security.py            # SSRF check, injection redaction, audit log
+├── moderation.py          # Input and output moderation gate
+├── cost_tracker.py        # Token usage and estimated cost
+├── orchestrator.py        # Wires agents A to D, sequential or hierarchical
+├── cli.py                 # Command-line entry point
+├── backend/main.py        # FastAPI server with SSE
+├── frontend/index.html    # Static UI that listens to the SSE stream
+├── app_streamlit.py       # Streamlit alternative UI
+├── agents/                # base_agent, lead_researcher, web_scout, fact_checker, editor
+├── rag/                   # ingest.py (chunking and ingestion), vector_store.py (ChromaDB)
+├── eval/                  # judge.py, compare.py, human_scores_template.csv
+├── tests/                 # pytest suite
+└── data/                  # documents, vector store and logs
+```
 
-* **Prompt-injection detection is pattern-based, not semantic** — The current implementation looks for known patterns defined in `security.py`. A sufficiently reworded injection could still bypass the checks. So this should be treated as a useful security layer, not a complete solution.
+## Design choices
 
-* **LLM JSON drift** — Sub-task plans and claim/verdict lists depend on the LLM returning valid JSON. `BaseAgent.parse_json` has fallback handling for fenced or prose-wrapped JSON, but a poorly behaving model can still result in a best-effort single-item list.
+- **Fixed pipeline instead of an open agent loop.** The cost and latency of a run are bounded and every stage can be tested on its own. The trade-off is that the system cannot decide to search again when results are thin.
+- **UNVERIFIED as the safe default.** If a model's output cannot be parsed, every claim becomes UNVERIFIED, never SUPPORTED.
+- **Redact instead of drop.** Suspicious text in a source is replaced in place so the rest of the page is still usable, and the event is logged.
+- **One small provider interface.** A single `chat` method works on all four providers, at the cost of not using native tool-calling or streaming.
 
-* **Fact-checking is bounded by the local RAG corpus** — If `data/documents/` is empty or does not contain relevant information, Agent C has less grounding available and may have to rely more on general model knowledge. Such claims are explicitly marked as `UNVERIFIED` in the report.
+## Known limitations
 
-* **DuckDuckGo (default free search)** — DuckDuckGo does not have an official API and may rate-limit requests or return limited results under heavy usage. For production use, `SEARCH_PROVIDER` can be changed to `tavily` or `serper`.
+- **Verification is only as good as the knowledge base.** The Fact Checker retrieves with the sub-task text rather than each claim and uses the top 4 chunks without a similarity threshold. With an empty or unrelated corpus, most claims come back UNVERIFIED.
+- **Citations come from the model.** The Editor is prompted to cite sources as `[n]`, but the numbering is not generated or validated in code.
+- **Injection detection is pattern-based.** A reworded injection can slip past it, so treat it as one layer, not a full defense.
+- **The SSRF check has gaps.** It does not re-check redirects, and it resolves DNS separately from the request.
+- **LLM JSON can drift.** Parsing has fallbacks, but a weak model can still return unusable output, which degrades to best-effort results.
+- **Cost tracking is per process.** The tracker is a single global object, so concurrent requests share totals. Prices are hard-coded.
+- **Web search.** DuckDuckGo has no official API and may rate-limit. Use `tavily` or `serper` for heavier use.
+- **Moderation fallback is small.** The local block-list is a fallback, not a replacement for a real moderation service.
+- **Demo-grade API.** There is no authentication or rate limiting, CORS is open, and the optional `api_key` query parameter can end up in logs, so keep the backend local or behind your own protection.
 
-* **Moderation** — If an `OPENAI_API_KEY` is not available for the official Moderation API, the system uses a lightweight local keyword-based heuristic. This is useful as a fallback but should not be treated as a replacement for a production-grade moderation system.
+## Ideas for next steps
 
-* **Cost estimates** — The cost tracker uses hardcoded per-million-token pricing in `cost_tracker.py`. These values will need to be updated if the providers change their pricing.
+- Generate and validate citation numbers in code.
+- Retrieve per claim, add a relevance threshold, and require agreement from independent sources.
+- Re-validate redirects in the SSRF check.
+- Keep one failed sub-task from failing the whole run.
+- Fall back to another provider when one is down.
+- Track cost per request and cancel runs when the browser disconnects.
 
-* **Ollama mode** — Running Ollama locally requires enough RAM/VRAM for the selected model. If the machine has limited resources, a smaller model such as `llama3.1:8b` or smaller may be a better choice.
+## Tech stack
 
-## Deliverables Checklist (Mapped to Plan Grading Rubric)
-
-| Phase       | Requirement                                                                         | Status                                                                                                                                    |
-| ----------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 1           | Prompt library (3 personas) + comparative analysis                                  | Superseded — Agent personas are implemented in `agents/*.py`; provider comparison is available through the `--provider` flag on any query |
-| 2           | Local RAG system, chunking strategy, grounded/cited answers                         |  `rag/ingest.py`, `rag/vector_store.py` — generalized to work with any folder rather than one fixed file                                 |
-| 3           | Single-agent CLI tool, ReAct pattern, robustness                                    |  `cli.py run`, with retry logic in `llm_providers.py`/`search_tools.py`                                                                  |
-| 4           | Multi-agent MVP, sequential + hierarchical flow, shared state                       |  `orchestrator.py`, with both modes tested                                                                                               |
-| 5           | LLM-as-a-judge eval vs. human, UI w/ live status, moderation, cost tracking, README |  `eval/judge.py` + `eval/compare.py`, FastAPI+SSE UI, `moderation.py`, `cost_tracker.py`                                                 |
- 
-## Tech Stack
-
-| Layer         | Technology                                  |
-| ------------- | ------------------------------------------- |
-| Language      | Python 3.11+                                |
-| LLM Access    | Anthropic API / OpenAI API / Ollama (local) |
-| RAG Framework | Custom chunking + ChromaDB                  |
-| Vector DB     | ChromaDB (local, persistent)                |
-| Search Tool   | DuckDuckGo (free) / Tavily / Serper         |
-| Frontend      | Streamlit                                   |
-| Testing       | pytest                                      |
+| Layer | Technology |
+| --- | --- |
+| Language | Python 3.11+ |
+| LLMs | Anthropic, OpenAI, Groq, Ollama |
+| RAG | Custom chunking, Sentence-Transformers, ChromaDB |
+| Search | DuckDuckGo, Tavily, Serper |
+| Backend | FastAPI, Uvicorn, SSE |
+| Frontend | Static HTML and JavaScript (EventSource), Streamlit alternative |
+| Reliability | tenacity retries, audit log, moderation |
+| Testing | pytest |
+| Packaging | Docker, Docker Compose |
